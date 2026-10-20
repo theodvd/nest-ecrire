@@ -46,10 +46,12 @@
   <div class="secondaires">
     <button type="button" id="copier">Copier seulement</button>
     <a id="annonce" href="https://www.leboncoin.fr">Voir l'annonce</a>
+    <button type="button" id="signaler" hidden>Signaler une arnaque</button>
   </div>
 </main>
 <script>
-  // Fragment = base64url(deflate brut(JSON {i: id annonce, c: catégorie, t: titre, m: message})).
+  // Fragment = base64url(deflate brut(JSON {i: id annonce, c: catégorie, t: titre, m: message,
+  //            s: canal ntfy de signalement})).
   async function lire() {
     const b64 = location.hash.slice(1).replace(/-/g, "+").replace(/_/g, "/");
     const octets = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
@@ -62,7 +64,7 @@
       const s = getSelection(); s.removeAllRanges(); s.addRange(r); return false;
     });
   }
-  lire().then(({ i, c, t, m }) => {
+  lire().then(({ i, c, t, m, s }) => {
     document.getElementById("titre").textContent = t || "Écrire au bailleur";
     document.getElementById("message").textContent = m;
     document.getElementById("ecrire").href = `https://www.leboncoin.fr/reply/${i}`;
@@ -70,6 +72,23 @@
     const etat = document.getElementById("etat");
     // Pas de preventDefault : le lien suit son cours (ouvre l'app Leboncoin si installée).
     document.getElementById("ecrire").addEventListener("click", () => { copier(m); });
+    // Signalement : nest relève ce canal à chaque passage et bloque le compte pour toujours.
+    const boutonSignal = document.getElementById("signaler");
+    if (s) {
+      boutonSignal.hidden = false;
+      let armé = false;
+      boutonSignal.addEventListener("click", async () => {
+        if (!armé) { armé = true; boutonSignal.textContent = "Confirmer : c'est une arnaque"; return; }
+        try {
+          const r = await fetch(`https://ntfy.sh/${s}`, { method: "POST", body: `arnaque ${i}` });
+          if (!r.ok) throw new Error(r.status);
+          boutonSignal.hidden = true;
+          etat.textContent = "Signalé : ce compte sera bloqué au prochain passage de nest.";
+        } catch {
+          etat.textContent = "Signalement impossible pour l'instant : réessaie dans un moment.";
+        }
+      });
+    }
     document.getElementById("copier").addEventListener("click", async () => {
       etat.textContent = (await copier(m)) ? "Message copié." : "Texte sélectionné : copie-le à la main.";
     });
